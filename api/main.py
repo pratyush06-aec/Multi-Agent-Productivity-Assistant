@@ -1,4 +1,6 @@
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.staticfiles import StaticFiles
+import os
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 from typing import Optional
@@ -172,7 +174,27 @@ async def delete_note(note_id: str):
 
 @app.get("/health")
 async def health_check():
+    from database.mongo_client import MongoDB
+    db_status = "connected"
+    try:
+        # Ping the DB to ensure literal connectivity
+        MongoDB().client.admin.command('ping')
+    except Exception:
+        db_status = "disconnected"
+        raise HTTPException(
+            status_code=503, 
+            detail={"status": "unhealthy", "database": db_status}
+        )
+
     return {
         "status": "healthy",
+        "database": db_status,
         "timestamp": datetime.now().isoformat()
     }
+
+
+# ==================== Frontend Static Files ====================
+
+frontend_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend")
+if os.path.isdir(frontend_dir):
+    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")

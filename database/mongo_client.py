@@ -10,7 +10,7 @@ class MongoDB:
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance.client = MongoClient(config.MONGO_URI)
+            cls._instance.client = MongoClient(config.MONGO_URI, serverSelectionTimeoutMS=2000)
             cls._instance.db = cls._instance.client[config.DATABASE_NAME]
         return cls._instance
     
