@@ -1,220 +1,257 @@
 import google.generativeai as genai
+from google.protobuf.json_format import MessageToDict
 from datetime import datetime
 from dateutil import parser as date_parser
-import json
-import re
-from typing import Optional
+from typing import Optional, List, Dict
+import config
 
 from agents.task_agent import task_agent
 from agents.calendar_agent import calendar_agent
 from agents.notes_agent import notes_agent
-import config
 
-# Configure Gemini
 genai.configure(api_key=config.GEMINI_API_KEY)
+
+from google.generativeai.types import FunctionDeclaration, Tool
+# ==================== Tool Implementations ====================
+def add_task(title: str, description: str = "", priority: str = "medium", due_date: str = "") -> dict:
+    dt = date_parser.parse(due_date) if due_date else None
+    return task_agent.add_task(title=title, description=description, priority=priority, due_date=dt)
+
+def list_tasks(status: str = "") -> dict:
+    return task_agent.list_tasks(status=status if status else None)
+
+def complete_task(task_id: str) -> dict:
+    return task_agent.complete_task(task_id=task_id)
+
+def add_event(title: str, start_time: str, end_time: str = "", location: str = "") -> dict:
+    start = date_parser.parse(start_time)
+    end = date_parser.parse(end_time) if end_time else None
+    return calendar_agent.add_event(title=title, datetime_start=start, datetime_end=end, location=location)
+
+def get_today_events() -> dict:
+    return calendar_agent.get_today_events()
+
+def check_availability(datetime_check: str) -> dict:
+    dt = date_parser.parse(datetime_check)
+    return calendar_agent.check_availability(datetime_check=dt)
+
+def save_note(content: str, tags: list[str] = None) -> dict:
+    return notes_agent.save_note(content=content, tags=tags)
+
+def search_notes(keyword: str) -> dict:
+    return notes_agent.search_notes(keyword=keyword)
+
+# ==================== Tool Schemas ====================
+add_task_schema = FunctionDeclaration(
+    name="add_task",
+    description="Create a new task in the user's task list.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "title": {"type": "string", "description": "The name of the task."},
+            "description": {"type": "string", "description": "Details about the task."},
+            "priority": {"type": "string", "description": "Priority level ('low', 'medium', 'high')."},
+            "due_date": {"type": "string", "description": "Optional ISO 8601 string."}
+        },
+        "required": ["title"]
+    }
+)
+
+list_tasks_schema = FunctionDeclaration(
+    name="list_tasks",
+    description="Get all tasks, optionally filtered by status ('pending', 'in_progress', 'completed').",
+    parameters={
+        "type": "object",
+        "properties": {
+            "status": {"type": "string", "description": "Status filter."}
+        }
+    }
+)
+
+complete_task_schema = FunctionDeclaration(
+    name="complete_task",
+    description="Mark a specific task as completed.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "task_id": {"type": "string", "description": "The task ID."}
+        },
+        "required": ["task_id"]
+    }
+)
+
+add_event_schema = FunctionDeclaration(
+    name="add_event",
+    description="Create a new calendar event.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "title": {"type": "string", "description": "Event title."},
+            "start_time": {"type": "string", "description": "Start time ISO 8601 string."},
+            "end_time": {"type": "string", "description": "End time ISO 8601 string."},
+            "location": {"type": "string", "description": "Where the event is located."}
+        },
+        "required": ["title", "start_time"]
+    }
+)
+
+get_today_events_schema = FunctionDeclaration(
+    name="get_today_events",
+    description="Get all calendar events scheduled for today."
+)
+
+check_availability_schema = FunctionDeclaration(
+    name="check_availability",
+    description="Check if the user has any events at a specific time.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "datetime_check": {"type": "string", "description": "Time to check (ISO 8601 string)."}
+        },
+        "required": ["datetime_check"]
+    }
+)
+
+save_note_schema = FunctionDeclaration(
+    name="save_note",
+    description="Create a new note. You should use this to remember concepts, summaries, ideas.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "content": {"type": "string", "description": "The actual note content."},
+            "tags": {"type": "array", "items": {"type": "string"}, "description": "A list of string tags."}
+        },
+        "required": ["content"]
+    }
+)
+
+search_notes_schema = FunctionDeclaration(
+    name="search_notes",
+    description="Search all notes for a specific keyword.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "keyword": {"type": "string", "description": "The word or phrase to search for."}
+        },
+        "required": ["keyword"]
+    }
+)
+
+agent_tool = Tool(
+    function_declarations=[
+        add_task_schema, list_tasks_schema, complete_task_schema,
+        add_event_schema, get_today_events_schema, check_availability_schema,
+        save_note_schema, search_notes_schema
+    ]
+)
+
+# Map func names to callables
+TOOL_MAP = {
+    "add_task": add_task,
+    "list_tasks": list_tasks,
+    "complete_task": complete_task,
+    "add_event": add_event,
+    "get_today_events": get_today_events,
+    "check_availability": check_availability,
+    "save_note": save_note,
+    "search_notes": search_notes
+}
 
 class CoordinatorAgent:
     """
-    Primary agent that coordinates sub-agents based on user input.
-    Uses Gemini to understand intent and route to appropriate sub-agent.
+    The central intelligence using Gemini Function Calling.
+    It orchestrates the conversation and delegates tool calls appropriately.
     """
     
     def __init__(self):
         self.name = "coordinator"
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
         
-        # Tool registry mapping actions to agent methods
-        self.tools = {
-            # Task operations
-            "add_task": task_agent.add_task,
-            "list_tasks": task_agent.list_tasks,
-            "complete_task": task_agent.complete_task,
-            "update_task": task_agent.update_task,
-            "delete_task": task_agent.delete_task,
-            "get_pending_tasks": task_agent.get_pending_tasks,
-            "get_high_priority_tasks": task_agent.get_high_priority_tasks,
-            
-            # Calendar operations
-            "add_event": calendar_agent.add_event,
-            "list_events": calendar_agent.list_events,
-            "get_today_events": calendar_agent.get_today_events,
-            "get_upcoming_events": calendar_agent.get_upcoming_events,
-            "delete_event": calendar_agent.delete_event,
-            "check_availability": calendar_agent.check_availability,
-            
-            # Notes operations
-            "save_note": notes_agent.save_note,
-            "list_notes": notes_agent.list_notes,
-            "search_notes": notes_agent.search_notes,
-            "delete_note": notes_agent.delete_note,
-            "get_notes_by_tag": notes_agent.get_notes_by_tag,
-            "get_recent_notes": notes_agent.get_recent_notes,
-        }
+        system_instruction = (
+            f"You are Personal Assistant, a highly capable multi-agent system. "
+            f"You manage the user's tasks, calendar, and notes using the provided tools. "
+            f"The current local datetime is {datetime.now().isoformat()}. "
+            "Never tell the user you don't have access to tools; execute them sequentially to fulfill their requests. "
+            "If asked about events today, call get_today_events. If asked to add a task, call add_task, etc. "
+            "Always be conversational, concise, and professional in your final responses."
+        )
         
-        self.system_prompt = """You are a coordinator AI that routes user requests to the appropriate agent.
-
-Available actions and their parameters:
-
-TASK AGENT:
-- add_task: title (required), description, priority (low/medium/high), due_date (ISO format)
-- list_tasks: status (pending/in_progress/completed, optional)
-- complete_task: task_id (required)
-- update_task: task_id (required), title, description, status, priority
-- delete_task: task_id (required)
-- get_pending_tasks: no params
-- get_high_priority_tasks: no params
-
-CALENDAR AGENT:
-- add_event: title (required), datetime_start (ISO format, required), datetime_end, location
-- list_events: start_date, end_date (ISO format)
-- get_today_events: no params
-- get_upcoming_events: days (default 7)
-- delete_event: event_id (required)
-- check_availability: datetime_check (ISO format, required)
-
-NOTES AGENT:
-- save_note: content (required), tags (list of strings)
-- list_notes: tag (optional filter)
-- search_notes: keyword (required)
-- delete_note: note_id (required)
-- get_notes_by_tag: tag (required)
-- get_recent_notes: limit (default 10)
-
-Based on the user's input, determine the action and extract parameters.
-Return ONLY a JSON object with this structure:
-{
-    "action": "action_name",
-    "agent": "task_agent|calendar_agent|notes_agent",
-    "params": {parameter dictionary}
-}
-
-For dates, convert natural language to ISO format (e.g., "tomorrow at 3pm" -> proper datetime).
-Current datetime: """ + datetime.now().isoformat()
-
-    def _parse_llm_response(self, response_text: str) -> dict:
-        """Extract JSON from LLM response."""
-        # Try to find JSON in the response
-        json_match = re.search(r'\{[\s\S]*\}', response_text)
-        if json_match:
-            try:
-                return json.loads(json_match.group())
-            except json.JSONDecodeError:
-                pass
-        return None
-
-    def _convert_datetime_params(self, params: dict) -> dict:
-        """Convert string datetime params to datetime objects."""
-        datetime_fields = ['due_date', 'datetime_start', 'datetime_end', 'start_date', 'end_date', 'datetime_check']
+        self.model = genai.GenerativeModel(
+            model_name='gemini-1.5-flash',
+            tools=[agent_tool],
+            system_instruction=system_instruction
+        )
         
-        for field in datetime_fields:
-            if field in params and params[field]:
-                try:
-                    if isinstance(params[field], str):
-                        params[field] = date_parser.parse(params[field])
-                except:
-                    params[field] = None
-        
-        return params
+        # Keep conversation history and context
+        self.chat_session = self.model.start_chat()
 
     def route_request(self, user_input: str) -> dict:
         """
-        Process user input and route to appropriate agent.
+        Process user input through a native tool-calling loop.
         """
+        executed_actions = []
+        
         try:
-            # Get LLM to interpret the request
-            prompt = f"{self.system_prompt}\n\nUser request: {user_input}"
-            response = self.model.generate_content(prompt)
+            # Note: We send the message manually and handle loops to track tool execution properly
+            response = self.chat_session.send_message(user_input)
             
-            # Parse the LLM response
-            parsed = self._parse_llm_response(response.text)
-            
-            if not parsed:
-                return {
-                    "success": False,
-                    "action": "unknown",
-                    "agent": "coordinator",
-                    "result": {},
-                    "message": "Could not understand the request. Please try rephrasing."
-                }
-            
-            action = parsed.get("action")
-            agent_name = parsed.get("agent")
-            params = parsed.get("params", {})
-            
-            # Convert datetime strings to datetime objects
-            params = self._convert_datetime_params(params)
-            
-            # Execute the action
-            if action in self.tools:
-                result = self.tools[action](**params)
-                return {
-                    "success": result.get("success", True),
-                    "action": action,
-                    "agent": agent_name,
-                    "result": result,
-                    "message": result.get("message", "Action completed")
-                }
-            else:
-                return {
-                    "success": False,
-                    "action": action,
-                    "agent": agent_name,
-                    "result": {},
-                    "message": f"Unknown action: {action}"
-                }
+            while True:
+                # Identify if there is a function call in the response parts
+                part = response.parts[0] if response.parts else None
                 
+                if part and getattr(part, "function_call", None):
+                    fc = part.function_call
+                    name = fc.name
+                    # Convert protobuf map to pure dict
+                    args = MessageToDict(fc._pb).get("args", {})
+                    
+                    executed_actions.append({"tool": name, "args": args})
+                    
+                    # Execute locally
+                    print(f"Executing tool {name} with args {args}")
+                    if name in TOOL_MAP:
+                        func = TOOL_MAP[name]
+                        try:
+                            # Pass kwargs (the tool mapped to the dict keys)
+                            res = func(**args)
+                            func_response = {"result": res}
+                        except Exception as e:
+                            print(f"Error executing {name}: {e}")
+                            func_response = {"error": str(e)}
+                    else:
+                        func_response = {"error": f"Unknown tool: {name}"}
+                    
+                    # Send result back to Gemini so it reads it and either calls another tool or outputs text
+                    response = self.chat_session.send_message(
+                        genai.protos.Part(
+                            function_response=genai.protos.FunctionResponse(
+                                name=name,
+                                response=func_response
+                            )
+                        )
+                    )
+                else:
+                    # No more function calls, we have the final text!
+                    break
+            
+            return {
+                "success": True,
+                "action": "chat",
+                "agent": "coordinator",
+                "result": {},
+                "message": response.text,
+                "executed_actions": executed_actions
+            }
+
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return {
                 "success": False,
                 "action": "error",
                 "agent": "coordinator",
                 "result": {"error": str(e)},
-                "message": f"Error processing request: {str(e)}"
+                "message": f"I hit an error: {str(e)}",
+                "executed_actions": executed_actions
             }
-
-    def execute_direct(self, action: str, params: dict) -> dict:
-        """
-        Execute an action directly without LLM interpretation.
-        Useful for programmatic access.
-        """
-        if action not in self.tools:
-            return {
-                "success": False,
-                "action": action,
-                "agent": "unknown",
-                "result": {},
-                "message": f"Unknown action: {action}"
-            }
-        
-        params = self._convert_datetime_params(params)
-        
-        try:
-            result = self.tools[action](**params)
-            
-            # Determine which agent handled the action
-            agent_name = "unknown"
-            if action.startswith(("add_task", "list_task", "complete", "update_task", "delete_task", "get_pending", "get_high")):
-                agent_name = "task_agent"
-            elif action.startswith(("add_event", "list_event", "get_today", "get_upcoming", "delete_event", "check")):
-                agent_name = "calendar_agent"
-            elif action.startswith(("save_note", "list_note", "search", "delete_note", "get_note", "get_recent")):
-                agent_name = "notes_agent"
-            
-            return {
-                "success": result.get("success", True),
-                "action": action,
-                "agent": agent_name,
-                "result": result,
-                "message": result.get("message", "Action completed")
-            }
-        except Exception as e:
-            return {
-                "success": False,
-                "action": action,
-                "agent": "unknown",
-                "result": {"error": str(e)},
-                "message": f"Error: {str(e)}"
-            }
-
 
 coordinator = CoordinatorAgent()

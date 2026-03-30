@@ -37,8 +37,16 @@ class TaskCreate:
     def validate(self):
         validate_type(self.title, str, "title")
         validate_type(self.description, str, "description")
-        if not isinstance(self.priority, TaskPriority):
+        if isinstance(self.priority, str):
+            try:
+                self.priority = TaskPriority(self.priority)
+            except ValueError:
+                raise ValueError("Invalid priority")
+        elif not isinstance(self.priority, TaskPriority):
             raise ValueError("Invalid priority")
+        if self.due_date and isinstance(self.due_date, str):
+            from dateutil import parser
+            self.due_date = parser.parse(self.due_date)
         if self.due_date and not isinstance(self.due_date, datetime):
             raise ValueError("due_date must be datetime")
 
@@ -56,10 +64,28 @@ class TaskUpdate:
             validate_type(self.title, str, "title")
         if self.description:
             validate_type(self.description, str, "description")
-        if self.status and not isinstance(self.status, TaskStatus):
-            raise ValueError("Invalid status")
-        if self.priority and not isinstance(self.priority, TaskPriority):
-            raise ValueError("Invalid priority")
+        
+        if self.status:
+            if isinstance(self.status, str):
+                try:
+                    self.status = TaskStatus(self.status)
+                except ValueError:
+                    raise ValueError("Invalid status")
+            elif not isinstance(self.status, TaskStatus):
+                raise ValueError("Invalid status")
+                
+        if self.priority:
+            if isinstance(self.priority, str):
+                try:
+                    self.priority = TaskPriority(self.priority)
+                except ValueError:
+                    raise ValueError("Invalid priority")
+            elif not isinstance(self.priority, TaskPriority):
+                raise ValueError("Invalid priority")
+                
+        if self.due_date and isinstance(self.due_date, str):
+            from dateutil import parser
+            self.due_date = parser.parse(self.due_date)
 
 
 # ---------------- EVENT ---------------- #
@@ -73,8 +99,14 @@ class EventCreate:
 
     def validate(self):
         validate_type(self.title, str, "title")
+        if isinstance(self.datetime_start, str):
+            from dateutil import parser
+            self.datetime_start = parser.parse(self.datetime_start)
         if not isinstance(self.datetime_start, datetime):
             raise ValueError("datetime_start must be datetime")
+        if self.datetime_end and isinstance(self.datetime_end, str):
+            from dateutil import parser
+            self.datetime_end = parser.parse(self.datetime_end)
 
 
 # ---------------- NOTE ---------------- #
@@ -102,16 +134,21 @@ class AgentRequest:
 
 @dataclass
 class AgentResponse:
+    success: bool
     action: str
     agent: str
     result: Dict
     message: str
+    executed_actions: Optional[List[Dict]] = field(default_factory=list)
 
     def validate(self):
+        validate_type(self.success, bool, "success")
         validate_type(self.action, str, "action")
         validate_type(self.agent, str, "agent")
         validate_type(self.result, dict, "result")
         validate_type(self.message, str, "message")
+        if self.executed_actions is not None:
+            validate_type(self.executed_actions, list, "executed_actions")
 
 
 # ---------------- HELPER ---------------- #

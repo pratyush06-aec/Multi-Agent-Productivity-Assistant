@@ -157,7 +157,16 @@ const DataService = {
   async executeChat(query) {
     const r = await api('POST', '/execute', { query });
     if (r) return r;
-    return { success: true, action: 'demo', agent: 'coordinator', message: `Demo mode: I understood "${query}". Connect the backend for real AI responses!`, result: {} };
+    return { 
+      success: true, 
+      action: 'demo', 
+      agent: 'coordinator', 
+      message: `Demo mode: I understood "${query}". Connect the backend for real AI responses!`, 
+      result: {},
+      executed_actions: [
+        { tool: "demo_action_parser", args: { input: query } }
+      ]
+    };
   }
 };
 

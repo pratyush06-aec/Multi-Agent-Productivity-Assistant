@@ -6,14 +6,6 @@
 // ---- SPA Router ----
 let currentPage = 'dashboard';
 
-const pageRenderers = {
-  dashboard: renderDashboard,
-  tasks: renderTasks,
-  calendar: renderCalendar,
-  notes: renderNotes,
-  chat: renderChat,
-};
-
 async function loadPage(page) {
   currentPage = page;
 
@@ -24,7 +16,7 @@ async function loadPage(page) {
 
   // Render
   const main = document.getElementById('main-content');
-  const renderer = pageRenderers[page];
+  const renderer = window.pageRenderers[page];
   if (renderer) {
     const html = await renderer();
     main.innerHTML = html;
@@ -42,7 +34,7 @@ function navigateTo(page) {
 // Hash router
 function handleHashChange() {
   const hash = window.location.hash.replace('#/', '') || 'dashboard';
-  const page = Object.keys(pageRenderers).includes(hash) ? hash : 'dashboard';
+  const page = Object.keys(window.pageRenderers || {}).includes(hash) ? hash : 'dashboard';
   loadPage(page);
 }
 
