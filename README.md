@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/banner.png" alt="Multi-Agent Productivity Assistant 3D Banner" width="100%" />
+  <img src="assets/banner.png" alt="Multi-Agent Productivity Assistant 3D Banner" width="90%" />
 
   <h1>🚀 Multi-Agent Productivity Assistant</h1>
   <p>An intelligent, context-aware productivity hub powered by autonomous AI agents functioning seamlessly with Gemini. Schedule events, manage tasks, and generate insights automatically using natural language in a stunning, modern dashboard.</p>
