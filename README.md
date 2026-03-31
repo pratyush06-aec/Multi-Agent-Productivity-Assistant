@@ -100,9 +100,7 @@ Access at `http://localhost:8080`.
 ## 🗺️ System Architecture
 
 <div align="center">
-  <img src="assets/architecture.png" alt="System Design Architecture Diagram" width="100%"/>
-  <br/>
-  <em>High-level architectural orchestration flow.</em>
+  <img src="assets/diagram-export-30-3-2026-9_40_08-pm.png" alt="System architecture diagram" width="90%"/>
 </div>
 
 1. **Coordinator Agent:** Parses the `query`, isolates the intention via Gemini 1.5 parsing, and delegates execution utilizing strict JSON schema Function Calling.
@@ -111,10 +109,6 @@ Access at `http://localhost:8080`.
 4. **Client Sink:** Updates are instantly reflected onto the dark-shell web interface.
 
 <br/>
-
-<div align="center">
-  <img src="assets/diagram-export-30-3-2026-9_40_08-pm.png" alt="System architecture diagram" width="90%"/>
-</div>
 
 <div align="center">
   <i>Developed with precision and design-driven engineering.</i>
