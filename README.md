@@ -107,5 +107,9 @@ Access at `http://localhost:8080`.
 <br/>
 
 <div align="center">
+  <img src="assets\diagram-export-30-3-2026-9_40_08-pm.png" alt="System architecture diagram" width="90%"/>
+</div>
+
+<div align="center">
   <i>Developed with precision and design-driven engineering.</i>
 </div>
