@@ -99,6 +99,12 @@ Access at `http://localhost:8080`.
 
 ## 🗺️ System Architecture
 
+<div align="center">
+  <img src="assets/architecture.png" alt="System Design Architecture Diagram" width="100%"/>
+  <br/>
+  <em>High-level architectural orchestration flow.</em>
+</div>
+
 1. **Coordinator Agent:** Parses the `query`, isolates the intention via Gemini 1.5 parsing, and delegates execution utilizing strict JSON schema Function Calling.
 2. **Sub-Agents:** Specialized executors (Tasks, Calendar, Notes) execute validations directly translating complex human intent into database transactions.
 3. **Database Layer:** The `mongo_client.py` gracefully provides robust error resistance by routing fallbacks when the database experiences timeouts.
